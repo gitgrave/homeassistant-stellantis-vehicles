@@ -12,7 +12,7 @@ from homeassistant.const import (
 )
 
 from .utils import get_datetime
-from .stellantis import StellantisOauth
+from .stellantis import StellantisOauth, StellantisVehicles
 from .const import (
     DOMAIN,
     INTEGRATION_VERSION,
@@ -295,8 +295,17 @@ class StellantisVehiclesConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(step_id="reconfigure", data_schema=RECONFIGURE_SCHEMA)
 
         await self.init_translations()
-        self.stellantis = self.hass.data[DOMAIN][self._reconfigure_entry_id]
-        self.data = dict(self.stellantis._entry.data)
+        entry = self._get_reconfigure_entry()
+        self.stellantis = self.hass.data.get(DOMAIN, {}).get(self._reconfigure_entry_id)
+        if self.stellantis is None:
+            # The entry is not loaded (e.g. setup failed because the OAuth refresh
+            # token expired - which is exactly when a user reconfigures/reauths).
+            # In that case there is no runtime instance in hass.data, so rebuild one
+            # from the stored config entry, mirroring async_setup_entry.
+            self.stellantis = StellantisVehicles(self.hass)
+            self.stellantis.save_config(entry.data)
+            self.stellantis.set_entry(entry)
+        self.data = dict(entry.data)
 
         if user_input[FIELD_RECONFIGURE] == FIELD_REMOTE_COMMANDS:
             self.stellantis.disable_remote_commands()
